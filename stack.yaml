@@ -1,0 +1,7 @@
+name: p2p
+state:
+    repo: 'https://github.com/danny-waite/p2p'
+environments:
+    - dev
+    - staging
+    - production

@@ -1,0 +1,7 @@
+- name: tap1
+  module: passthrough
+  source: source1
+
+- name: tap2
+  module: passthrough
+  source: source2

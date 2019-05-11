@@ -1,0 +1,19 @@
+- from:
+    tap: tap1
+  to:
+    pipeline: enrichment
+
+- from:
+    tap: tap2
+  to:
+    pipeline: enrichment
+
+- from:
+    pipeline: enrichment
+  to:
+    pipeline: global
+
+- from:
+    pipeline: global
+  to:
+    sink: dummy-sink

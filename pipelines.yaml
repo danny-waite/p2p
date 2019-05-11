@@ -1,0 +1,14 @@
+- name: enrichment
+  modules:
+    - name: step1
+      module: passthrough
+
+- name: second
+  modules:
+    - name: secondnoop
+      module: passthrough
+
+- name: global
+  modules:
+    - name: gnoop
+      module: passthrough
