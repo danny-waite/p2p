@@ -1,0 +1,98 @@
+- name: alerting
+  type: aws.kinesis.AnalyticsApplication
+  config:
+    outputs:
+      - name: test
+        schema:
+          recordFormatType: JSON 
+        kinesisStream: 
+          resourceArn: ${source2.arn}
+          roleArn: ${ksaRole.arn}
+
+    inputs:
+      kinesisStream:
+        resourceArn: ${source1.arn}
+        roleArn: ${ksaRole.arn}
+      namePrefix: alerting_prefix
+      parallelism:
+        count: 1
+      schema:
+        recordColumns:
+          - mapping: "$.tag.alert.id"
+            name: alertId
+            sqlType: VARCHAR(20)  
+          - mapping: "$.tag.alert.description"
+            name: alertDescription
+            sqlType: VARCHAR(512) 
+          - mapping: "$.tag.alert.groupBy"
+            name: alertGroupBy
+            sqlType: VARCHAR(100) 
+          - mapping: "$.tag.alert.window.count"
+            name: alertWindowCount
+            sqlType: INTEGER 
+          - mapping: "$.tag.alert.window.length"
+            name: alertWindowLength
+            sqlType: INTEGER 
+        recordEncoding: UTF-8
+        recordFormat:
+          mappingParameters:
+            json:
+              recordRowPath: "$"
+    code: |
+      CREATE OR REPLACE STREAM "DESTINATION_SQL_STREAM" (alertId VARCHAR(20), alertDescription VARCHAR(512),alertGroupBy VARCHAR(100), alertWindowCount INTEGER, actualCount Integer);
+      --
+      CREATE OR REPLACE  PUMP "STREAM_PUMP1" AS INSERT INTO "DESTINATION_SQL_STREAM"
+      SELECT STREAM "alertId", "alertDescription", "alertGroupBy", "alertWindowCount", COUNT(*) AS actualCount
+      FROM "SOURCE_SQL_STREAM_001"
+      WHERE "alertWindowLength" = 30
+      -- Uses a 30-second tumbling time window
+      GROUP BY "alertId", "alertDescription", "alertGroupBy", "alertWindowCount", FLOOR(("SOURCE_SQL_STREAM_001".ROWTIME - TIMESTAMP '2019-01-01 00:00:00') SECOND / 30 TO SECOND);
+      --
+      CREATE OR REPLACE PUMP "STREAM_PUMP2" AS INSERT INTO "DESTINATION_SQL_STREAM"
+      SELECT STREAM "alertId", "alertDescription", "alertGroupBy", "alertWindowCount", COUNT(*) AS actualCount
+      FROM "SOURCE_SQL_STREAM_001"
+      WHERE "alertWindowLength" = 60
+      -- Uses a 60-second tumbling time window
+      GROUP BY "alertId", "alertDescription", "alertGroupBy", "alertWindowCount", FLOOR(("SOURCE_SQL_STREAM_001".ROWTIME - TIMESTAMP '2019-01-01 00:00:00') SECOND / 60 TO SECOND);
+      --
+      CREATE OR REPLACE STREAM "ALERT_SQL_STREAM" (alertId VARCHAR(20), alertDescription VARCHAR(512),alertGroupBy VARCHAR(100), alertWindowCount INTEGER, actualCount Integer);
+      --
+      CREATE OR REPLACE  PUMP "ALERT_PUMP" AS INSERT INTO "ALERT_SQL_STREAM"
+      SELECT STREAM *
+      FROM "DESTINATION_SQL_STREAM"
+      WHERE "DESTINATION_SQL_STREAM".actualCount >= alertWindowCount;
+
+- name: ksaRole
+  type: aws.iam.Role
+  config:
+    assumeRolePolicy:
+      Version: "2012-10-17"
+      Statement:
+        - Action: sts:AssumeRole
+          Principal:
+            Service:
+              - kinesisanalytics.amazonaws.com
+          Effect: Allow
+
+- name: ksaPolicy
+  type: aws.iam.RolePolicy
+  config:
+    policy: 
+      Version: "2012-10-17"
+      Statement:
+        - Action:
+            - kinesis:DescribeStream
+            - kinesis:GetShardIterator
+            - kinesis:GetRecords
+            - kinesis:ListShards
+          Effect: Allow
+          Resource:
+            - ${source1.arn}
+        - Action:
+            - kinesis:DescribeStream
+            - kinesis:PutRecord
+            - kinesis:PutRecords
+          Effect: Allow
+          Resource:
+            - ${source2.arn}
+    role: ${ksaRole.id}
